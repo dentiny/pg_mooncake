@@ -1,6 +1,7 @@
 export override DEBUG := $(filter debug,$(BUILD_TYPE))
 CARGO_FLAGS := $(if $(DEBUG),,--release)
-MAKEFLAGS := --no-print-directory
+NPROC := $(shell nproc)
+MAKEFLAGS := --no-print-directory -j$(NPROC)
 
 .PHONY: .BUILD all release debug clean format install installcheck uninstall \
         duckdb duckdb-fast clean-duckdb \
@@ -42,8 +43,9 @@ uninstall:
 # DuckDB
 
 duckdb: | .BUILD
-	BUILD_EXTENSIONS="httpfs;json" CMAKE_VARS_BUILD="-DBUILD_SHELL=0 -DBUILD_UNITTESTS=0" DISABLE_SANITIZER=1 \
-	$(MAKE) -C third_party/duckdb $(BUILD_TYPE)
+	BUILD_EXTENSIONS="httpfs;json" CMAKE_FLAGS="-DCMAKE_BUILD_PARALLEL_LEVEL=$(NPROC)" \
+	CMAKE_VARS_BUILD="-DBUILD_SHELL=0 -DBUILD_UNITTESTS=0" DISABLE_SANITIZER=1 \
+	$(MAKE) -j$(NPROC) -C third_party/duckdb $(BUILD_TYPE)
 ifeq ($(BUILD_TYPE), debug)
 	gdb-add-index third_party/duckdb/build/debug/src/libduckdb.so
 endif
