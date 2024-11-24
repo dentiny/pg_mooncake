@@ -40,8 +40,8 @@ CleanupDuckdbScanState(DuckdbScanState *state) {
 	MemoryContextReset(state->css.ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 	ExecClearTuple(state->css.ss.ss_ScanTupleSlot);
 
-	state->query_results.reset();
-	state->current_data_chunk.reset();
+	// state->query_results.reset();
+	// state->current_data_chunk.reset();
 
 	if (state->prepared_statement) {
 		delete state->prepared_statement;
@@ -93,13 +93,17 @@ Duckdb_BeginCustomScan(CustomScanState *cscanstate, EState *estate, int eflags) 
 }
 
 static void
-ExecuteQuery(DuckdbScanState *state) {
-	auto &prepared = *state->prepared_statement;
-	auto &query_results = state->query_results;
+ExecuteQuery(DuckdbScanState *state) { 
+	auto &prepared = *state->prepared_statement; // type: duckdb::PreparedStatement
+	elog(WARNING, "At execution, prepared query is %s", prepared.query.data());
+
+	// query_result type:
+	auto& query_results = state->query_results;
 	auto &connection = state->duckdb_connection;
 	auto pg_params = state->estate->es_param_list_info;
 	const auto num_params = pg_params ? pg_params->numParams : 0;
 	duckdb::vector<duckdb::Value> duckdb_params;
+	elog(WARNING, "When execute query in pg_duckdb, param num is %d", num_params);
 	for (int i = 0; i < num_params; i++) {
 		ParamExternData *pg_param;
 		ParamExternData tmp_workspace;
@@ -122,7 +126,7 @@ ExecuteQuery(DuckdbScanState *state) {
 		}
 	}
 
-	auto pending = prepared.PendingQuery(duckdb_params, true);
+	auto pending = prepared.PendingQuery(duckdb_params, true); // type: unique_ptr<PendingQueryResult>
 	if (pending->HasError()) {
 		return pending->ThrowError();
 	}
@@ -148,6 +152,9 @@ ExecuteQuery(DuckdbScanState *state) {
 	}
 
 	query_results = pending->Execute();
+
+	// Check return value.
+
 	state->column_count = query_results->ColumnCount();
 	state->is_executed = true;
 }
@@ -155,6 +162,17 @@ ExecuteQuery(DuckdbScanState *state) {
 static TupleTableSlot *
 Duckdb_ExecCustomScan(CustomScanState *node) {
 	DuckdbScanState *duckdb_scan_state = (DuckdbScanState *)node;
+
+	// ss -> ScanState
+	// ps -> PlanState
+	// es -> EState
+	//
+	// PlanState has EState*
+	// EState has ResultRelInfo**
+	// ResultRelInfo has ri_returningList
+	ResultRelInfo** result_rel_info = node->ss.ps.state->es_result_relations;
+	elog(WARNING, "result rel info is valid ? %d", result_rel_info == nullptr);
+
 	TupleTableSlot *slot = duckdb_scan_state->css.ss.ss_ScanTupleSlot;
 	MemoryContext old_context;
 
@@ -165,6 +183,11 @@ Duckdb_ExecCustomScan(CustomScanState *node) {
 
 	if (duckdb_scan_state->fetch_next) {
 		duckdb_scan_state->current_data_chunk = duckdb_scan_state->query_results->Fetch();
+		elog(WARNING, "Current data chunk is null ? %d", duckdb_scan_state->current_data_chunk == nullptr);
+		if (duckdb_scan_state->current_data_chunk != nullptr) {
+			const auto data_chunk_string = duckdb_scan_state->current_data_chunk->ToString();
+			elog(WARNING, "Assign data chunk from duckdb scan state query result, data chunk looks like %s", data_chunk_string.data());
+		}
 		duckdb_scan_state->current_row = 0;
 		duckdb_scan_state->fetch_next = false;
 		if (!duckdb_scan_state->current_data_chunk || duckdb_scan_state->current_data_chunk->size() == 0) {
@@ -184,13 +207,16 @@ Duckdb_ExecCustomScan(CustomScanState *node) {
 
 	/* MemoryContext used for allocation */
 	old_context = MemoryContextSwitchTo(duckdb_scan_state->css.ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
-
+	elog(WARNING, "Scan state column count = %ld", duckdb_scan_state->column_count);
 	for (idx_t col = 0; col < duckdb_scan_state->column_count; col++) {
 		// FIXME: we should not use the Value API here, it's complicating the LIST conversion logic
 		auto value = duckdb_scan_state->current_data_chunk->GetValue(col, duckdb_scan_state->current_row);
 		if (value.IsNull()) {
+			elog(WARNING, "%s:%d Scan state col idx %ld, value is null", __FILE__, __LINE__, col);
 			slot->tts_isnull[col] = true;
 		} else {
+			const auto value_string = value.ToString();
+			elog(WARNING, "%s:%d Scan state col idx %ld value is %s", __FILE__, __LINE__, col, value_string.data());
 			slot->tts_isnull[col] = false;
 			if (!pgduckdb::ConvertDuckToPostgresValue(slot, value, col)) {
 				CleanupDuckdbScanState(duckdb_scan_state);
@@ -208,11 +234,20 @@ Duckdb_ExecCustomScan(CustomScanState *node) {
 	}
 
 	ExecStoreVirtualTuple(slot);
+
+	elog(WARNING, "value column number is %d", slot->tts_nvalid);
+	for (int ii = 0; ii < slot->tts_nvalid; ++ii) {
+		elog(WARNING, "Column %d is null ? %d, value = %lu", ii, slot->tts_isnull[ii], slot->tts_values[ii]);
+	}
+
 	return slot;
 }
 
 void
 Duckdb_EndCustomScan(CustomScanState *node) {
+
+	elog(WARNING, "Duckdb_EndCustomScan");
+
 	DuckdbScanState *duckdb_scan_state = (DuckdbScanState *)node;
 	CleanupDuckdbScanState(duckdb_scan_state);
 	RESUME_CANCEL_INTERRUPTS();

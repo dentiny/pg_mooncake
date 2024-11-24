@@ -327,32 +327,46 @@ ConvertDuckToPostgresArray(TupleTableSlot *slot, duckdb::Value &value, idx_t col
 
 bool
 ConvertDuckToPostgresValue(TupleTableSlot *slot, duckdb::Value &value, idx_t col) {
+	auto value_string = value.ToString();
+	elog(WARNING, "%s:%d convert duckdb value %s", __FILE__, __LINE__, value_string.data());
+
 	Oid oid = slot->tts_tupleDescriptor->attrs[col].atttypid;
 
 	switch (oid) {
 	case BOOLOID:
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		slot->tts_values[col] = value.GetValue<bool>();
 		break;
 	case CHAROID:
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		slot->tts_values[col] = value.GetValue<int8_t>();
 		break;
 	case INT2OID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		if (value.type().id() == duckdb::LogicalTypeId::UTINYINT) {
 			slot->tts_values[col] = static_cast<int16_t>(value.GetValue<uint8_t>());
+		} else if (value.type().id() == duckdb::LogicalTypeId::INTEGER) {
+			slot->tts_values[col] = value.GetValue<int32_t>();
 		} else {
 			slot->tts_values[col] = value.GetValue<int16_t>();
 		}
 		break;
 	}
 	case INT4OID: {
+		uint8_t type_id_val = static_cast<uint8_t>(value.type().id());
+		elog(WARNING, "type %s:%d with value id %d", __FILE__, __LINE__, type_id_val);
 		if (value.type().id() == duckdb::LogicalTypeId::USMALLINT) {
+			elog(WARNING, "Assign for INT4OID");
 			slot->tts_values[col] = static_cast<int32_t>(value.GetValue<uint16_t>());
 		} else {
+			elog(WARNING, "not Assign for INT4OID");
 			slot->tts_values[col] = value.GetValue<int32_t>();
 		}
+		elog(WARNING, "slot col %ld is %ld", col, slot->tts_values[col]);
 		break;
 	}
 	case INT8OID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		if (value.type().id() == duckdb::LogicalTypeId::UINTEGER) {
 			slot->tts_values[col] = static_cast<int64_t>(value.GetValue<uint32_t>());
 		} else {
@@ -364,6 +378,7 @@ ConvertDuckToPostgresValue(TupleTableSlot *slot, duckdb::Value &value, idx_t col
 	case TEXTOID:
 	case JSONOID:
 	case VARCHAROID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		auto str = value.GetValue<duckdb::string>();
 		auto varchar = str.c_str();
 		auto varchar_len = str.size();
@@ -375,21 +390,25 @@ ConvertDuckToPostgresValue(TupleTableSlot *slot, duckdb::Value &value, idx_t col
 		break;
 	}
 	case DATEOID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		duckdb::date_t date = value.GetValue<duckdb::date_t>();
 		slot->tts_values[col] = date.days - pgduckdb::PGDUCKDB_DUCK_DATE_OFFSET;
 		break;
 	}
 	case TIMESTAMPOID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		duckdb::timestamp_t timestamp = value.GetValue<duckdb::timestamp_t>();
 		slot->tts_values[col] = timestamp.value - pgduckdb::PGDUCKDB_DUCK_TIMESTAMP_OFFSET;
 		break;
 	}
 	case TIMESTAMPTZOID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		duckdb::timestamp_t timestamp = value.GetValue<duckdb::timestamp_t>();
 		slot->tts_values[col] = timestamp.value - pgduckdb::PGDUCKDB_DUCK_TIMESTAMP_OFFSET;
 		break;
 	}
 	case FLOAT4OID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		auto result_float = value.GetValue<float>();
 		slot->tts_tupleDescriptor->attrs[col].atttypid = FLOAT4OID;
 		slot->tts_tupleDescriptor->attrs[col].attbyval = true;
@@ -397,11 +416,13 @@ ConvertDuckToPostgresValue(TupleTableSlot *slot, duckdb::Value &value, idx_t col
 		break;
 	}
 	case FLOAT8OID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		double result_double = value.GetValue<double>();
 		ConvertDouble(slot, result_double, col);
 		break;
 	}
 	case NUMERICOID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		if (value.type().id() == duckdb::LogicalTypeId::DOUBLE) {
 			auto result_double = value.GetValue<double>();
 			ConvertDouble(slot, result_double, col);
@@ -447,6 +468,7 @@ ConvertDuckToPostgresValue(TupleTableSlot *slot, duckdb::Value &value, idx_t col
 		break;
 	}
 	case UUIDOID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		D_ASSERT(value.type().id() == duckdb::LogicalTypeId::UUID);
 		D_ASSERT(value.type().InternalType() == duckdb::PhysicalType::INT128);
 		auto duckdb_uuid = value.GetValue<hugeint_t>();
@@ -465,14 +487,17 @@ ConvertDuckToPostgresValue(TupleTableSlot *slot, duckdb::Value &value, idx_t col
 		break;
 	}
 	case BOOLARRAYOID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		ConvertDuckToPostgresArray<BoolArray>(slot, value, col);
 		break;
 	}
 	case INT4ARRAYOID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		ConvertDuckToPostgresArray<PODArray<PostgresIntegerOIDMapping<INT4OID>>>(slot, value, col);
 		break;
 	}
 	case INT8ARRAYOID: {
+		elog(WARNING, "type %s:%d", __FILE__, __LINE__);
 		ConvertDuckToPostgresArray<PODArray<PostgresIntegerOIDMapping<INT8OID>>>(slot, value, col);
 		break;
 	}

@@ -92,6 +92,7 @@ ContainsDuckdbItems(Node *node, void *context) {
 
 	if (IsA(node, Query)) {
 		Query *query = (Query *)node;
+		elog(WARNING, "contain column store table ? %d, contain duckdb table ? %d", ContainsColumnstoreTables(query->rtable), ContainsDuckdbTables(query->rtable));
 		if (ContainsColumnstoreTables(query->rtable) || ContainsDuckdbTables(query->rtable)) {
 			return true;
 		}
@@ -173,10 +174,10 @@ IsAllowedStatement(Query *query, bool throw_error = false) {
 	// 	return false;
 	// }
 
-	if (query->returningList) {
-		elog(elevel, "RETURNING clause is not supported yet");
-		return false;
-	}
+	// if (query->returningList) {
+	// 	elog(elevel, "RETURNING clause is not supported yet");
+	// 	return false;
+	// }
 
 	if (query->commandType == CMD_UPDATE && query->hasSubLinks) {
 		ListCell *l;
@@ -201,16 +202,35 @@ IsAllowedStatement(Query *query, bool throw_error = false) {
 	return true;
 }
 
+/*
+Problem statement:
+- `PlannedStmt` returned has returning
+- But not executed
+
+postgres=# INSERT INTO mooncake_tbl VALUES (123) RETURNING val + 1;
+WARNING:  contain column store table ? 1, contain duckdb table ? 0
+WARNING:  extension registered ? 1, need duckdb extension ? 1
+WARNING:  Use mooncake plugin, duckdb plan has return 1
+(1 row)
+
+INSERT 0 1
+*/
 static PlannedStmt *
 DuckdbPlannerHook(Query *parse, const char *query_string, int cursor_options, ParamListInfo bound_params) {
-	if (pgduckdb::IsExtensionRegistered()) {
-		if (NeedsDuckdbExecution(parse)) {
+	bool need_duckdb_exec = NeedsDuckdbExecution(parse);
+	bool pgduckdb_registered = pgduckdb::IsExtensionRegistered();
+	elog(WARNING, "extension registered ? %d, need duckdb extension ? %d", pgduckdb_registered, need_duckdb_exec);
+	if (pgduckdb_registered) {
+		if (need_duckdb_exec) {
 			IsAllowedStatement(parse, true);
-
-			return DuckdbPlanNode(parse, query_string, cursor_options, bound_params, true);
-		} else if (duckdb_force_execution && IsAllowedStatement(parse)) {
+			PlannedStmt *duckdbPlan = DuckdbPlanNode(parse, query_string, cursor_options, bound_params, true);
+			elog(WARNING, "Use mooncake plugin, duckdb plan has return %d", duckdbPlan->hasReturning);
+			return duckdbPlan;
+		}
+		if (duckdb_force_execution && IsAllowedStatement(parse)) {
 			PlannedStmt *duckdbPlan = DuckdbPlanNode(parse, query_string, cursor_options, bound_params, false);
 			if (duckdbPlan) {
+				elog(WARNING, "Use pgduckdb plugin, duckdb plan has return %d", duckdbPlan->hasReturning);
 				return duckdbPlan;
 			}
 			/* If we can't create a plan, we'll fall back to Postgres */
@@ -218,15 +238,19 @@ DuckdbPlannerHook(Query *parse, const char *query_string, int cursor_options, Pa
 	}
 
 	if (prev_planner_hook) {
-		return prev_planner_hook(parse, query_string, cursor_options, bound_params);
+		PlannedStmt* pg_plan = prev_planner_hook(parse, query_string, cursor_options, bound_params);
+		elog(WARNING, "prev pg plan has returning ? %d", pg_plan->hasReturning);
+		return pg_plan;
 	} else {
-		return standard_planner(parse, query_string, cursor_options, bound_params);
+		auto* pg_plan = standard_planner(parse, query_string, cursor_options, bound_params);
+		elog(WARNING, "cur pg plan has returning ? %d", pg_plan->hasReturning);
+		return pg_plan;
 	}
 }
 
 static void
 DuckdbUtilityHook(PlannedStmt *pstmt, const char *query_string, bool read_only_tree, ProcessUtilityContext context,
-                  ParamListInfo params, struct QueryEnvironment *query_env, DestReceiver *dest, QueryCompletion *qc) {
+                  ParamListInfo params, struct QueryEnvironment *query_env, DestReceiver *dest, QueryCompletion *qc) {	
 	Node *parsetree = pstmt->utilityStmt;
 	if (pgduckdb::IsExtensionRegistered()) {
 		if (IsA(parsetree, AlterTableStmt)) {

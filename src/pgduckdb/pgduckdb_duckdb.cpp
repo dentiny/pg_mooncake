@@ -270,6 +270,7 @@ DuckDBManager::CreateConnection() {
 	// 	instance.disabled_filesystems_is_set = true;
 	// }
 
+	// pgduckdb::DuckDBQueryOrThrow(context, "SET threads = 1");
 	return connection;
 }
 

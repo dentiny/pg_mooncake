@@ -119,7 +119,7 @@ string ColumnstoreMetadata::GetTablePath(Oid oid) {
 }
 
 void ColumnstoreMetadata::GetTableMetadata(Oid oid, string &table_name /*out*/, vector<string> &column_names /*out*/,
-                                           vector<string> &column_types /*out*/) {
+                                           vector<string> &column_types /*out*/) { 
     ::Relation table = table_open(oid, AccessShareLock);
     TupleDesc desc = RelationGetDescr(table);
     table_name = RelationGetRelationName(table);

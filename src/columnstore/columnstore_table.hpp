@@ -2,6 +2,8 @@
 
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
+#include <iostream>
+
 struct SnapshotData;
 
 namespace duckdb {
@@ -16,7 +18,7 @@ class ColumnstoreTable : public TableCatalogEntry {
 public:
     ColumnstoreTable(Catalog &catalog, SchemaCatalogEntry &schema, CreateTableInfo &info, Oid oid, Snapshot snapshot);
 
-    ~ColumnstoreTable();
+    ~ColumnstoreTable() override;
 
 public:
     unique_ptr<BaseStatistics> GetStatistics(ClientContext &context, column_t column_id) override {

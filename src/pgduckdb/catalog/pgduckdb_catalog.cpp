@@ -73,6 +73,7 @@ PostgresCatalog::PlanCreateTableAs(ClientContext &context, LogicalCreateTable &o
 unique_ptr<PhysicalOperator>
 PostgresCatalog::PlanInsert(ClientContext &context, LogicalInsert &op, unique_ptr<PhysicalOperator> plan) {
 	if (db.name == "pgmooncake") {
+		elog(WARNING, "Plan insert within pgduckdb");
 		return Columnstore::PlanInsert(context, op, std::move(plan));
 	}
 	throw NotImplementedException("PlanInsert not supported yet");
@@ -81,6 +82,7 @@ PostgresCatalog::PlanInsert(ClientContext &context, LogicalInsert &op, unique_pt
 unique_ptr<PhysicalOperator>
 PostgresCatalog::PlanDelete(ClientContext &context, LogicalDelete &op, unique_ptr<PhysicalOperator> plan) {
 	if (db.name == "pgmooncake") {
+		elog(WARNING, "Plan delete within pgduckdb");
 		return Columnstore::PlanDelete(context, op, std::move(plan));
 	}
 	throw NotImplementedException("PlanDelete not supported yet");
@@ -89,6 +91,7 @@ PostgresCatalog::PlanDelete(ClientContext &context, LogicalDelete &op, unique_pt
 unique_ptr<PhysicalOperator>
 PostgresCatalog::PlanUpdate(ClientContext &context, LogicalUpdate &op, unique_ptr<PhysicalOperator> plan) {
 	if (db.name == "pgmooncake") {
+		elog(WARNING, "Plan update within pgduckdb");
 		return Columnstore::PlanUpdate(context, op, std::move(plan));
 	}
 	throw NotImplementedException("PlanUpdate not supported yet");
