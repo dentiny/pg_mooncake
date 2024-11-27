@@ -175,6 +175,7 @@ Duckdb_ExecCustomScan(CustomScanState *node) {
 	}
 
 	if (duckdb_scan_state->query_results->properties.return_type == duckdb::StatementReturnType::CHANGED_ROWS) {
+		elog(WARNING, "changed rows");
 		duckdb_scan_state->estate->es_processed =
 		    duckdb_scan_state->current_data_chunk->GetValue(0, 0).GetValue<int64_t>();
 	}
@@ -208,6 +209,17 @@ Duckdb_ExecCustomScan(CustomScanState *node) {
 	}
 
 	ExecStoreVirtualTuple(slot);
+
+	/*
+	WARNING:  Col 0 is null ? 0, val = 479
+	(1 row)
+
+	INSERT 0 1
+	*/
+	for (int col = 0; col < slot->tts_nvalid; ++col) {
+		elog(WARNING, "Col %d is null ? %d, val = %lu", col, slot->tts_isnull[col], slot->tts_values[col]);
+	}
+
 	return slot;
 }
 

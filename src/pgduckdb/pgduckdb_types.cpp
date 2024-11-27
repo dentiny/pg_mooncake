@@ -339,6 +339,8 @@ ConvertDuckToPostgresValue(TupleTableSlot *slot, duckdb::Value &value, idx_t col
 	case INT2OID: {
 		if (value.type().id() == duckdb::LogicalTypeId::UTINYINT) {
 			slot->tts_values[col] = static_cast<int16_t>(value.GetValue<uint8_t>());
+		} else if (value.type().id() == duckdb::LogicalTypeId::INTEGER) {
+			slot->tts_values[col] = value.GetValue<int32_t>();
 		} else {
 			slot->tts_values[col] = value.GetValue<int16_t>();
 		}
