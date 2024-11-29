@@ -28,7 +28,7 @@ clean: clean-delta clean-duckdb
 	rm -rf build
 
 format: format-delta
-	git diff --name-only main -- | grep -E '\.c$|\.cpp$|\.h$|\.hpp$' | xargs clang-format -i
+	find src -name '*.c' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' | xargs clang-format -i
 
 install:
 	@$(MAKE) -C build/current install
