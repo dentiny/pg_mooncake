@@ -17,12 +17,6 @@ public:
 public:
     unique_ptr<FileHandle> OpenFile(const string &path, FileOpenFlags flags,
                                     optional_ptr<FileOpener> opener = nullptr) override {
-        if (IsRemoteFile(path) && mooncake_enable_local_cache) {
-            auto disk_space = fs.GetAvailableDiskSpace(x_mooncake_local_cache);
-            if (disk_space.IsValid() && disk_space.GetIndex() > x_min_disk_space) {
-                cached_file = fs.OpenFile(cached_file_path, flags, opener);
-            }
-        }
         return fs.OpenFile(path, flags, opener);
     }
 
@@ -244,7 +238,10 @@ void ColumnstoreTable::Delete(ClientContext &context, unordered_set<row_t> &row_
 
 vector<string> ColumnstoreTable::GetFilePaths(const string &path, const vector<string> &file_names) {
     vector<string> file_paths;
-    if (mooncake_enable_local_cache && FileSystem::IsRemoteFile(path)) {
+
+    // TODO(hjiang): Always enable caching for testing, revert before PR.
+    // if (mooncake_enable_local_cache && FileSystem::IsRemoteFile(path)) {
+    if (true) {
         auto local_fs = FileSystem::CreateLocal();
         for (auto &file_name : file_names) {
             string cached_file_path = x_mooncake_local_cache + file_name;
