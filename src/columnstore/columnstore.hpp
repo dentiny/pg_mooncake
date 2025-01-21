@@ -13,7 +13,7 @@ class PhysicalOperator;
 
 class Columnstore {
 public:
-    static void CreateTable(Oid oid);
+    static void CreateTable(Oid oid, const std::string &local_path);
 
     static void TruncateTable(Oid oid);
 

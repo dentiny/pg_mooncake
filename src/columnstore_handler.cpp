@@ -5,6 +5,7 @@ extern "C" {
 #include "postgres.h"
 
 #include "access/tableam.h"
+#include "common/relpath.h"
 #include "fmgr.h"
 #include "utils/syscache.h"
 }
@@ -141,8 +142,11 @@ void columnstore_relation_set_new_filenode(Relation rel, const RelFileNode *newr
                 elog(ERROR, "unsupported generated column \"%s\"", NameStr(attr->attname));
             }
         }
-
-        duckdb::Columnstore::CreateTable(rel->rd_id);
+        char *path = relpathbackend(rel->rd_locator, rel->rd_backend, MAIN_FORKNUM);
+        std::string local_path{path};
+        pfree(path);
+        local_path += '/'; // have to end with slash
+        duckdb::Columnstore::CreateTable(rel->rd_id, local_path);
     } else {
         ReleaseSysCache(tp);
         duckdb::Columnstore::TruncateTable(rel->rd_id);
