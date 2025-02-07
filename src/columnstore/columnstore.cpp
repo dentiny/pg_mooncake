@@ -7,14 +7,17 @@
 
 namespace duckdb {
 
-void Columnstore::CreateTable(Oid oid) {
+void Columnstore::CreateTable(Oid oid, const std::string &local_path) {
     ColumnstoreMetadata metadata(NULL /*snapshot*/);
     string path = metadata.GetTablePath(oid);
     if (!path.empty() && !duckdb::FileSystem::IsRemoteFile(path)) {
-        FileSystem::CreateLocal()->CreateDirectory(path);
+        FileSystem::CreateLocal()->CreateDirectory(local_path);
+        metadata.TablesInsert(oid, local_path);
+        InvokeCPPFunc(LakeCreateTable, oid, local_path);
+    } else {
+        metadata.TablesInsert(oid, path);
+        InvokeCPPFunc(LakeCreateTable, oid, path);
     }
-    metadata.TablesInsert(oid, path);
-    InvokeCPPFunc(LakeCreateTable, oid, path);
 }
 
 void Columnstore::TruncateTable(Oid oid) {
