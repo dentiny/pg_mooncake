@@ -31,6 +31,13 @@ public:
     vector<string> SecretsGetDuckdbQueries();
     string SecretsSearchDeltaOptions(const string &path);
 
+    // Initialize the global [delta_update_records] table if not.
+    void InitializeDeltaUpdateRecordTable();
+
+    // Add delta record to [delta_update_records] table.
+    void InsertDeltaRecord(const string &path, const string &delta_options, const vector<string> &file_names,
+                           const vector<int64_t> &file_sizes, const vector<int8_t> &is_add_files);
+
 private:
     Snapshot snapshot;
 };
