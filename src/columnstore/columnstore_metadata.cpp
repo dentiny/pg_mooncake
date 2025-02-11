@@ -135,7 +135,9 @@ ColumnstoreMetadata::GetTableMetadata(Oid oid) {
     TupleDesc desc = RelationGetDescr(table);
     string table_name = RelationGetRelationName(table);
     vector<string> column_names;
+    column_names.reserve(desc->natts);
     vector<string> column_types;
+    column_types.reserve(desc->natts);
     for (int i = 0; i < desc->natts; i++) {
         Form_pg_attribute attr = &desc->attrs[i];
         column_names.emplace_back(NameStr(attr->attname));
