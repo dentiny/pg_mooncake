@@ -14,6 +14,7 @@ extern "C" {
 #include "catalog/namespace.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
@@ -34,6 +35,13 @@ Datum StringGetTextDatum(const string_t &s) {
 constexpr int x_tables_natts = 3;
 constexpr int x_data_files_natts = 3;
 constexpr int x_secrets_natts = 5;
+constexpr int x_delta_natts = 6;
+
+// Delta updata record table, whose lifecycle is decoupled from txn lifecycle, and never destructs until process
+// termination.
+::Relation delta_update_record_table = NULL;
+// Monotonically increasing delta update record id.
+int64_t delta_update_record_id = 0;
 
 Oid Mooncake() {
     return get_namespace_oid("mooncake", false /*missing_ok*/);
@@ -55,6 +63,9 @@ Oid DataFilesFileName() {
 }
 Oid Secrets() {
     return get_relname_relid("secrets", Mooncake());
+}
+Oid DeltaUpdateRecord() {
+    return get_relname_relid("delta_update_records", Mooncake());
 }
 
 } // namespace
@@ -135,7 +146,9 @@ ColumnstoreMetadata::GetTableMetadata(Oid oid) {
     TupleDesc desc = RelationGetDescr(table);
     string table_name = RelationGetRelationName(table);
     vector<string> column_names;
+    column_names.reserve(desc->natts);
     vector<string> column_types;
+    column_types.reserve(desc->natts);
     for (int i = 0; i < desc->natts; i++) {
         Form_pg_attribute attr = &desc->attrs[i];
         column_names.emplace_back(NameStr(attr->attname));
@@ -295,6 +308,73 @@ string ColumnstoreMetadata::SecretsSearchDeltaOptions(const string &path) {
     systable_endscan(scan);
     table_close(table, AccessShareLock);
     return option;
+}
+
+void ColumnstoreMetadata::InitializeDeltaUpdateRecordTable() {
+    if (delta_update_record_table == NULL) {
+        delta_update_record_table = table_open(DeltaUpdateRecord(), RowExclusiveLock);
+    }
+}
+
+void ColumnstoreMetadata::InsertDeltaRecord(const string &path, const string &delta_options,
+                                            const vector<string> &file_names, const vector<int64_t> &file_sizes,
+                                            const vector<int8_t> &is_add_files) {
+    Datum file_paths_datum[file_names.size()];
+    for (size_t idx = 0; idx < file_names.size(); ++idx) {
+        file_paths_datum[idx] = StringGetTextDatum(file_names[idx]);
+    }
+    Datum file_sizes_datum[file_sizes.size()];
+    for (size_t idx = 0; idx < file_sizes.size(); ++idx) {
+        file_sizes_datum[idx] = Int64GetDatum(file_sizes[idx]);
+    }
+    Datum is_add_files_datum[is_add_files.size()];
+    for (size_t idx = 0; idx < is_add_files.size(); ++idx) {
+        is_add_files_datum[idx] = Int8GetDatum(is_add_files[idx]);
+    }
+    Datum file_paths_array = PointerGetDatum(construct_array(
+        /*elems=*/file_paths_datum,
+        /*nelems=*/file_names.size(),
+        /*elmtype=*/TEXTOID,
+        /*elmlen=*/sizeof(text),
+        /*elmbyval=*/false,
+        /*elmalign=*/'d'));
+    Datum file_sizes_array = PointerGetDatum(construct_array(
+        /*elems=*/file_sizes_datum,
+        /*nelems=*/file_sizes.size(),
+        /*elmtype=*/INT8OID,
+        /*elmlen=*/sizeof(int64_t),
+        /*elmbyval=*/true,
+        /*elmalign=*/'d'));
+    Datum is_add_files_array = PointerGetDatum(construct_array(
+        /*elems=*/is_add_files_datum,
+        /*nelems=*/is_add_files.size(),
+        /*elmtype=*/CHAROID,
+        /*elmlen=*/sizeof(int8_t),
+        /*elmbyval=*/true,
+        /*elmalign=*/'d'));
+    Datum values[x_delta_natts] = {
+        Int64GetDatum(delta_update_record_id++), // id
+        StringGetTextDatum(path),                // path
+        StringGetTextDatum(delta_options),       // delta_option
+        file_paths_array,                        // file_paths (TEXT[])
+        file_sizes_array,                        // file_sizes (BIGINT[])
+        is_add_files_array                       // is_add_files (SMALLINT[])
+    };
+    constexpr bool is_null[x_delta_natts] = {false, false, false, false, false, false};
+
+    // TODO(hjiang): index = 0 fails for nullptr check.
+    for (int idx = 0; idx < x_delta_natts; ++idx) {
+        char *ptr = DatumGetPointer(values[idx]);
+        D_ASSERT(ptr != nullptr);
+    }
+
+    HeapTuple new_tuple = heap_form_tuple(
+        /*tupleDescriptor=*/RelationGetDescr(delta_update_record_table),
+        /*values=*/values,
+        /*isnull=*/is_null);
+    PostgresFunctionGuard(CatalogTupleInsert, delta_update_record_table, new_tuple);
+    CommandCounterIncrement();
+    table_close(delta_update_record_table, RowExclusiveLock);
 }
 
 } // namespace duckdb
