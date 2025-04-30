@@ -1,8 +1,11 @@
+#include "columnstore/columnstore_filesystem.hpp"
 #include "columnstore/columnstore_metadata.hpp"
 #include "columnstore/columnstore_statistics.hpp"
 #include "columnstore/columnstore_table.hpp"
 #include "duckdb/catalog/catalog_entry/table_function_catalog_entry.hpp"
+#include "duckdb/common/helper.hpp"
 #include "duckdb/common/multi_file_reader.hpp"
+#include "duckdb/main/client_data.hpp"
 #include "duckdb/main/extension_util.hpp"
 #include "duckdb/parser/tableref/table_function_ref.hpp"
 
@@ -139,6 +142,10 @@ unique_ptr<GlobalTableFunctionState> ColumnstoreScanInitGlobal(ClientContext &co
 }
 
 TableFunction ColumnstoreTable::GetScanFunction(ClientContext &context, unique_ptr<FunctionData> &bind_data) {
+    // Use read-optimized filesystem for scan operations.
+    context.client_data->client_file_system =
+        WrapColumnstoreReadCacheFileSystem(std::move(context.client_data->client_file_system));
+
     auto file_names = metadata->DataFilesSearch(oid, &context, &path, &columns);
     auto file_paths = GetFilePaths(path, file_names);
     if (file_paths.empty()) {
@@ -152,6 +159,7 @@ TableFunction ColumnstoreTable::GetScanFunction(ClientContext &context, unique_p
     columnstore_scan.get_multi_file_reader = ColumnstoreScanMultiFileReader::Create;
 
     vector<Value> values;
+    values.reserve(file_paths.size());
     for (auto &file_path : file_paths) {
         values.push_back(Value(file_path));
     }
